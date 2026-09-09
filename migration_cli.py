@@ -838,7 +838,12 @@ def main(args) -> None:
     # gemeinsamer Pfad wuerde bei zwei gleichzeitig laufenden Aufrufen (z.B. weil
     # ein vorheriger Lauf noch nicht fertig ist) sich gegenseitig ueberschreiben.
     config_path = WORK_DIR / f"rclone_{timestamp}_{os.getpid()}.conf"
-    log_file = log_dir / f"copy_{timestamp}.log"
+    # Gleicher Grund wie bei config_path oben: ohne PID im Namen wuerden zwei
+    # gleichzeitig gestartete Laeufe (z.B. zwei GUI-Instanzen, siehe "Zweite
+    # Instanz starten.app") im selben Sekunden-Zeitstempel dieselbe Log-Datei
+    # treffen - rclone haengt beim Schreiben nur an, die Ausgabe beider
+    # Kopiervorgaenge wuerde dann vermischt in einer Datei landen.
+    log_file = log_dir / f"copy_{timestamp}_{os.getpid()}.log"
 
     if not find_rclone():
         install_rclone()

@@ -284,7 +284,13 @@ class App(ctk.CTk):
         config_path = WORK_DIR / f"rclone_{timestamp}_{os.getpid()}.conf"
         log_dir = Path("C:/Logs") if platform.system() == "Windows" else Path.home() / "Logs"
         log_dir.mkdir(parents=True, exist_ok=True)
-        log_file = log_dir / f"copy_{timestamp}.log"
+        # PID im Dateinamen wie schon bei config_path oben - ohne das laufen
+        # zwei gleichzeitige Instanzen (siehe "Zweite Instanz starten.app")
+        # Gefahr, im selben Sekunden-Zeitstempel zu starten und sich dieselbe
+        # Log-Datei zu teilen; rclone haengt beim Schreiben nur an, die
+        # Log-Ausgabe beider Kopiervorgaenge landet dann vermischt in einer
+        # Datei statt in getrennten Logs.
+        log_file = log_dir / f"copy_{timestamp}_{os.getpid()}.log"
         env["RCLONE_CONFIG"] = str(config_path)
         if self.args.ca_cert_bundle:
             env["RCLONE_CA_CERT"] = self.args.ca_cert_bundle
