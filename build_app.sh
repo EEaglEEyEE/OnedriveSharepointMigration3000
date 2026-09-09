@@ -108,7 +108,37 @@ echo "Baue $APP_NAME (kann ein bis zwei Minuten dauern)..."
 APP_BUNDLE="$PROJECT_DIR/dist/$APP_NAME.app"
 [[ -d "$APP_BUNDLE" ]] || fail "Build abgeschlossen, aber '$APP_BUNDLE' wurde nicht gefunden - irgendetwas ist schiefgelaufen."
 
+# --- "Zweite Instanz starten.app": kleiner Launcher fuer echte Mehrfach-
+# Instanzen. Ein normaler Finder-Doppelklick auf eine bereits laufende App
+# aktiviert IMMER nur das laufende Fenster, egal was LSMultipleInstancesProhibited
+# in der .spec sagt - das ist dokumentiertes, seit Jahren bekanntes macOS-
+# Verhalten (der Schluessel wirkt nur zwischen mehreren Benutzer-Sitzungen,
+# nicht innerhalb derselben). Einzig zuverlaessiger Weg fuer eine echte zweite
+# Instanz ist 'open -n'. Dieser Launcher ist ein winziges, kompiliertes
+# AppleScript (kein sichtbares Terminal-Fenster), das genau das tut und sich
+# danach sofort selbst wieder beendet - liegt als eigene .app-Datei direkt
+# neben der Haupt-App, fuer den Fall "zwei Konten gleichzeitig bearbeiten".
+LAUNCHER_NAME="Zweite Instanz starten.app"
+LAUNCHER_BUNDLE="$PROJECT_DIR/dist/$LAUNCHER_NAME"
+echo ""
+echo "Baue '$LAUNCHER_NAME'..."
+LAUNCHER_SCRIPT="$(mktemp -t second_instance.XXXXXX).applescript"
+cat > "$LAUNCHER_SCRIPT" <<'APPLESCRIPT_EOF'
+on run
+	set launcherPosixPath to POSIX path of (path to me)
+	set appDir to do shell script "dirname " & quoted form of launcherPosixPath
+	set targetApp to appDir & "/onedrive-sharepoint-migration-tool.app"
+	do shell script "open -n " & quoted form of targetApp
+end run
+APPLESCRIPT_EOF
+rm -rf "$LAUNCHER_BUNDLE"
+osacompile -o "$LAUNCHER_BUNDLE" "$LAUNCHER_SCRIPT" \
+    || fail "Bauen von '$LAUNCHER_NAME' fehlgeschlagen."
+rm -f "$LAUNCHER_SCRIPT"
+cp "$PROJECT_DIR/app_icon/icon.icns" "$LAUNCHER_BUNDLE/Contents/Resources/applet.icns" 2>/dev/null || true
+
 echo ""
 echo "Fertig: $APP_BUNDLE"
 echo "Doppelklick startet die grafische Oberflaeche (onedir-Build, startet nahezu sofort - kein Splash-Screen auf macOS, siehe .spec)."
+echo "Fuer eine zweite, gleichzeitig laufende Instanz (z.B. zwei Konten parallel bearbeiten): '$LAUNCHER_NAME' danebenliegend per Doppelklick nutzen."
 echo "Fuer die Terminal-Oberflaeche weiterhin onedrive-sharepoint-migration-tool.command per Doppelklick nutzen."

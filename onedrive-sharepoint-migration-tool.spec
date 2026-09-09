@@ -145,6 +145,17 @@ if is_macos:
             # zu starten (macOS-Standardverhalten fuer .app-Bundles) - damit
             # kann man z.B. zwei Konten gleichzeitig bearbeiten.
             "LSMultipleInstancesProhibited": False,
+            # PyInstaller setzt bei EXE(console=True) automatisch
+            # LSBackgroundOnly=True (siehe PyInstaller/building/osx.py) - war
+            # hier nie beabsichtigt, console=True wurde nur wegen --cli
+            # (direkter Terminal-Aufruf von Contents/MacOS/... ) gesetzt.
+            # LSBackgroundOnly=True macht daraus faktisch eine Hintergrund-/
+            # Agent-App ohne normale Fenster-Aktivierung - dadurch blieb
+            # LSMultipleInstancesProhibited=False oben wirkungslos, ein
+            # zweiter Doppelklick oeffnete weiterhin keine zweite Instanz.
+            # Explizit ueberschreiben, da es unten in info_plist_dict.update()
+            # gemerged wird.
+            "LSBackgroundOnly": False,
         },
     )
 else:
