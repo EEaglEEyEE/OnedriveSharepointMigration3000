@@ -109,16 +109,30 @@ def _apply_window_icon(root: ctk.CTk) -> None:
     App.__init__, Fenster ganz normal sichtbar) - beide Versuche unten liefen
     laut icon_debug.log bereits mehrfach fehlerfrei durch (echte, von Null
     verschiedene Icon-Handles bei WM_SETICON), ohne dass je ein Icon
-    sichtbar wurde; die verbleibende Ursache (vermutlich Windows-Taskleisten-
-    Caching der Schaltflaeche beim ersten Sichtbarwerden) ist noch offen -
-    ein zuverlaessig startendes Fenster ohne Icon ist aber wichtiger als ein
-    Icon um den Preis eines nicht startenden Fensters.
+    sichtbar wurde.
 
-    Zwei unabhaengige Ebenen, beide per icon_debug.log (neben accounts.conf)
-    protokolliert (das Icon ist rein kosmetisch, darf den Start nie
-    verhindern):
-    1. iconphoto() mit mehreren PNG-Groessen.
-    2. WM_SETICON direkt per WinAPI am tatsaechlichen Top-Level-
+    Ursache gefunden: CustomTkinter's CTk.__init__ (customtkinter/windows/
+    ctk_tk.py) plant unter Windows selbst self.after(200,
+    self._windows_set_titlebar_icon). Dieser Callback feuert erst, sobald der
+    Mainloop laeuft - also NACH allem hier - und ersetzt das Icon lautlos
+    durch sein eigenes CustomTkinter_icon_Windows.ico, AUSSER das Flag
+    root._iconbitmap_method_called steht bereits auf True. Dieses Flag wird
+    nur von .iconbitmap()/.wm_iconbitmap() gesetzt - iconphoto() und rohes
+    WM_SETICON setzen es nicht, weshalb beide bisherigen Versuche 200ms nach
+    dem Start kommentarlos ueberschrieben wurden. Der erste Versuch
+    (root.iconbitmap(icon.ico)) war deshalb der einzige sichtbare - nur
+    verpixelt, weil Tks eigener ICO-Parser dabei tatsaechlich zum Zug kam.
+    Fix unten: root.iconbitmap() OHNE Argument aufrufen (bei Tk ein reiner
+    Abfrage-Vorgang, setzt nichts) - setzt ueber CTk's Override trotzdem das
+    Flag und unterdrueckt damit den verspaeteten Reset, waehrend iconphoto()/
+    WM_SETICON weiterhin die eigentliche (scharfe) Grafik liefern.
+
+    Drei Ebenen, alle per icon_debug.log (neben accounts.conf) protokolliert
+    (das Icon ist rein kosmetisch, darf den Start nie verhindern):
+    1. iconbitmap() ohne Argument, nur um CustomTkinters verspaeteten Reset
+       zu unterdruecken (siehe oben).
+    2. iconphoto() mit mehreren PNG-Groessen.
+    3. WM_SETICON direkt per WinAPI am tatsaechlichen Top-Level-
        Fensterhandle - unabhaengig von Tks eigener Icon-Verwaltung."""
     if platform.system() != "Windows":
         return
@@ -130,6 +144,23 @@ def _apply_window_icon(root: ctk.CTk) -> None:
                 f.write(f"{datetime.datetime.now():%Y-%m-%d %H:%M:%S} {message}\n")
         except OSError:
             pass
+
+    # CustomTkinter's CTk.__init__ scheduled self.after(200, self._windows_set_titlebar_icon)
+    # (customtkinter/windows/ctk_tk.py) BEVOR diese Funktion hier lief. Dieser Callback
+    # feuert erst, sobald der Mainloop laeuft - also NACH allem was unten passiert - und
+    # prueft dann root._iconbitmap_method_called: ist das noch False, ersetzt er das Icon
+    # kommentarlos durch CustomTkinter_icon_Windows.ico. iconphoto()/WM_SETICON setzen
+    # dieses Flag NICHT (nur .iconbitmap()/.wm_iconbitmap() tun das) - deshalb liefen beide
+    # Versuche unten laut Log erfolgreich durch, wurden aber ~200ms spaeter lautlos
+    # ueberschrieben. Ein iconbitmap()-Aufruf OHNE Argumente ist bei Tk ein reiner
+    # Abfrage-Vorgang (setzt nichts, siehe CPython tkinter.wm_iconbitmap), setzt aber via
+    # CTk's Override trotzdem das Flag - genau das noetig, um den verspaeteten Reset zu
+    # unterdruecken, ohne Tks eigenen (verpixelten) ICO-Parser ins Spiel zu bringen.
+    try:
+        root.iconbitmap()
+        log("iconbitmap() ohne Argument OK - CustomTkinter-Reset (after 200ms) unterdrueckt")
+    except Exception as exc:  # noqa: BLE001
+        log(f"iconbitmap() ohne Argument FEHLER: {type(exc).__name__}: {exc}")
 
     base_dir = Path(sys._MEIPASS) / "app_icon" if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent / "app_icon"  # noqa: SLF001
 
